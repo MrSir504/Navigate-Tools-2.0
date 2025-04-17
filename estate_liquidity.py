@@ -7,8 +7,7 @@ ESTATE_DUTY_ABATEMENT = 3500000
 ESTATE_DUTY_RATE_1 = 0.20
 ESTATE_DUTY_RATE_2 = 0.25
 ESTATE_DUTY_THRESHOLD = 30000000
-EXECUTOR_FEE_RATE = 0.035
-VAT_RATE = 0.15
+EXECUTOR_FEE_RATE_DEFAULT = 0.035  # South African standard (3.5%)
 CGT_INCLUSION_RATE = 0.40
 CGT_EXCLUSION_DEATH = 300000
 
@@ -37,11 +36,10 @@ def calculate_cgt(assets, marginal_tax_rate):
     cgt = taxable_amount * marginal_tax_rate
     return cgt
 
-def calculate_executor_fees(gross_value):
-    """Calculate executor's fees based on gross estate value."""
-    base_fee = gross_value * EXECUTOR_FEE_RATE
-    total_fee = base_fee * (1 + VAT_RATE)
-    return total_fee
+def calculate_executor_fees(gross_value, executor_fee_rate):
+    """Calculate executor's fees based on gross estate value and user-defined rate."""
+    base_fee = gross_value * executor_fee_rate
+    return base_fee
 
 def show():
     st.write("Enter details to assess your estate's liquidity and ensure your beneficiaries are protected.")
@@ -79,18 +77,19 @@ def show():
     pbo_bequest_value = st.number_input("Bequests to Public Benefit Organizations (R)", min_value=0.0, step=1000.0)
     st.write("**Assumptions**")
     marginal_tax_rate = st.number_input("Marginal Tax Rate for CGT (e.g., 0.45 for 45%)", min_value=0.0, max_value=0.45, value=0.45, step=0.01)
+    executor_fee_rate = st.number_input("Executor Fee Rate (%)", min_value=0.0, max_value=10.0, value=EXECUTOR_FEE_RATE_DEFAULT * 100, step=0.1) / 100
     if st.button("Calculate Estate Liquidity"):
         if not name.strip():
             st.error("Please enter a name.")
-        elif cash < 0 or life_insurance_to_estate < 0 or any(p < 0 for p in properties) or any(i["market_value"] < 0 or i["base_cost"] < 0 for i in investments) or other_assets < 0 or debts < 0 or medical_bills < 0 or cash_bequests < 0 or spouse_bequest_value < 0 or pbo_bequest_value < 0 or marginal_tax_rate < 0 or marginal_tax_rate > 0.45:
-            st.error("All financial inputs must be non-negative, and marginal tax rate must be between 0 and 45%.")
+        elif cash < 0 or life_insurance_to_estate < 0 or any(p < 0 for p in properties) or any(i["market_value"] < 0 or i["base_cost"] < 0 for i in investments) or other_assets < 0 or debts < 0 or medical_bills < 0 or cash_bequests < 0 or spouse_bequest_value < 0 or pbo_bequest_value < 0 or marginal_tax_rate < 0 or marginal_tax_rate > 0.45 or executor_fee_rate < 0:
+            st.error("All financial inputs must be non-negative, marginal tax rate must be between 0 and 45%, and executor fee rate must be non-negative.")
         else:
             try:
                 gross_estate = cash + life_insurance_to_estate + sum(properties) + sum(i["market_value"] for i in investments) + other_assets
                 net_estate = gross_estate - debts - medical_bills - cash_bequests
                 cgt = calculate_cgt(investments, marginal_tax_rate)
                 estate_duty = calculate_estate_duty(net_estate, has_surviving_spouse, spouse_bequest_value, pbo_bequest_value)
-                executor_fees = calculate_executor_fees(gross_estate)
+                executor_fees = calculate_executor_fees(gross_estate, executor_fee_rate)
                 total_costs = cgt + estate_duty + executor_fees
                 liquid_assets = cash + life_insurance_to_estate
                 liquidity_shortfall = max(0, total_costs - liquid_assets)
@@ -100,7 +99,7 @@ def show():
                 st.write(f"**Net Estate Value (after debts, medical bills, and cash bequests)**: R {net_estate:,.2f}")
                 st.write(f"**Capital Gains Tax**: R {cgt:,.2f}")
                 st.write(f"**Estate Duty**: R {estate_duty:,.2f}")
-                st.write(f"**Executor Fees (incl. VAT)**: R {executor_fees:,.2f}")
+                st.write(f"**Executor Fees**: R {executor_fees:,.2f}")
                 st.write(f"**Total Costs**: R {total_costs:,.2f}")
                 st.write(f"**Liquid Assets Available**: R {liquid_assets:,.2f}")
                 if liquidity_shortfall > 0:
