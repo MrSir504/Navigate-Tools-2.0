@@ -4,6 +4,7 @@ import salary_calculator
 import budget_tool
 import retirement_calculator
 import estate_liquidity
+import everest_wealth
 
 # Add custom CSS for grey background and white text to match Navigate Wealth logo
 st.markdown(
@@ -87,7 +88,7 @@ st.title("Navigate Wealth Financial Tools")
 st.markdown("<p style='text-align: center; color: #CCCCCC;'>Powered by Navigate Wealth</p>", unsafe_allow_html=True)
 
 # Tool selection dropdown
-tool_options = ["Select a Tool", "Budget Tool", "Estate Liquidity Tool", "RA Tax Rebate Calculator", "Retirement Calculator", "Salary Tax Calculator"]
+tool_options = ["Select a Tool", "Budget Tool", "Estate Liquidity Tool", "Everest Wealth", "RA Tax Rebate Calculator", "Retirement Calculator", "Salary Tax Calculator"]
 # Sort tools alphabetically, keeping "Select a Tool" as the first option
 tool_options = ["Select a Tool"] + sorted([tool for tool in tool_options if tool != "Select a Tool"])
 selected_tool = st.selectbox("Choose a Financial Tool:", tool_options)
@@ -105,3 +106,5 @@ elif selected_tool == "Retirement Calculator":
     retirement_calculator.show()
 elif selected_tool == "Estate Liquidity Tool":
     estate_liquidity.show()
+elif selected_tool == "Everest Wealth":
+    everest_wealth.show()
