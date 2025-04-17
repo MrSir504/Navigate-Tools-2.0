@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import math
+import plotly.graph_objects as go
 
 def calculate_future_value(current_value, annual_rate, years, monthly_contribution=0, annual_contribution_increase=0):
     """Calculate the future value of an investment with monthly contributions and annual increases."""
@@ -226,13 +227,62 @@ def show():
                     summary_data["Preservation Period (Years)"] = [0]
                     st.write("**Capital Depletion Over Time**")
                     chart_data = pd.DataFrame({
-                        "Year": list(range(years_to_retirement, years_to_retirement + len(capital_over_time))),
+                        "Age": list(range(retirement_age, retirement_age + len(capital_over_time))),
                         "Capital (R)": capital_over_time,
                         "Annual Withdrawal (R)": withdrawals_over_time,
                         "Monthly Income (R)": monthly_income_over_time,
                         "Monthly Income in Today's Value (R)": monthly_income_today_value
                     })
-                    st.line_chart(chart_data.set_index("Year")[["Capital (R)", "Annual Withdrawal (R)", "Monthly Income (R)", "Monthly Income in Today's Value (R)"]])
+                    # First Graph: Capital and Annual Withdrawal
+                    fig1 = go.Figure()
+                    fig1.add_trace(go.Scatter(
+                        x=chart_data["Age"],
+                        y=chart_data["Capital (R)"],
+                        mode="lines",
+                        name="Capital (R)",
+                        hovertemplate="Age: %{x}<br>Capital: R%{y:.2f}<extra></extra>"
+                    ))
+                    fig1.add_trace(go.Scatter(
+                        x=chart_data["Age"],
+                        y=chart_data["Annual Withdrawal (R)"],
+                        mode="lines",
+                        name="Annual Withdrawal (R)",
+                        hovertemplate="Age: %{x}<br>Annual Withdrawal: R%{y:.2f}<extra></extra>"
+                    ))
+                    fig1.update_layout(
+                        title="Capital and Annual Withdrawal Over Time",
+                        xaxis_title="Age",
+                        yaxis_title="Amount (R)",
+                        hovermode="x unified",
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig1)
+
+                    # Second Graph: Monthly Income (Future Value) and Monthly Income in Today's Value
+                    fig2 = go.Figure()
+                    fig2.add_trace(go.Scatter(
+                        x=chart_data["Age"],
+                        y=chart_data["Monthly Income (R)"],
+                        mode="lines",
+                        name="Monthly Income (Future Value) (R)",
+                        hovertemplate="Age: %{x}<br>Monthly Income (Future): R%{y:.2f}<extra></extra>"
+                    ))
+                    fig2.add_trace(go.Scatter(
+                        x=chart_data["Age"],
+                        y=chart_data["Monthly Income in Today's Value (R)"],
+                        mode="lines",
+                        name="Monthly Income in Today's Value (R)",
+                        hovertemplate="Age: %{x}<br>Monthly Income (Today's Value): R%{y:.2f}<extra></extra>"
+                    ))
+                    fig2.update_layout(
+                        title="Monthly Income Over Time",
+                        xaxis_title="Age",
+                        yaxis_title="Monthly Income (R)",
+                        hovermode="x unified",
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig2)
+
                 if preserve_capital and shortfall > 0:
                     additional_savings = calculate_additional_savings_needed(shortfall, years_to_retirement, average_return)
                     st.warning(f"**Capital Shortfall**: R {shortfall:,.2f}")
@@ -258,7 +308,7 @@ def show():
                             "If you did not opt to preserve capital, the 'Chart Data' sheet includes data for visualizing capital depletion over time.",
                             "To recreate the line chart in Excel (if applicable):",
                             "1. Go to the 'Chart Data' sheet.",
-                            "2. Select the 'Year' and 'Capital (R)' columns (or other metrics).",
+                            "2. Select the 'Age' and 'Capital (R)' columns (or other metrics).",
                             "3. Click Insert > Line Chart in Excel to visualize the depletion."
                         ]
                     })
@@ -272,3 +322,6 @@ def show():
                 )
             except Exception as e:
                 st.error(f"Error: {e}")
+
+if __name__ == "__main__":
+    show()
