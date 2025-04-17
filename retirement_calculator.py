@@ -74,16 +74,16 @@ def calculate_retirement_plan(monthly_income, inflation_rate, annual_increase, y
     annual_income = monthly_income * 12
     future_annual_income = annual_income * (1 + inflation_rate) ** years_to_retirement * (1 + annual_increase) ** years_to_retirement
     future_monthly_income = future_annual_income / 12
+    
     if preserve_capital:
+        max_drawdown_rate = 0.175  # Legislative maximum
+        # Capital required to sustain the desired income at the assumed return rate
         if assumed_return <= 0:
             capital_at_retirement = float('inf')
         else:
             capital_at_retirement = future_annual_income / assumed_return
-            withdrawal_rate = future_annual_income / capital_at_retirement
-            max_drawdown_rate = 0.175
-            if withdrawal_rate > max_drawdown_rate:
-                capital_at_retirement = future_annual_income / max_drawdown_rate
-        remaining_years = 20
+        # Adjust capital required for preservation period
+        remaining_years = 20  # Default remaining life expectancy after preservation
         income_after_preservation = future_annual_income * (1 + inflation_rate) ** preservation_years * (1 + annual_increase) ** preservation_years
         if assumed_return > 0:
             annuity_factor = (1 - (1 + assumed_return) ** (-remaining_years)) / assumed_return
@@ -93,11 +93,14 @@ def calculate_retirement_plan(monthly_income, inflation_rate, annual_increase, y
         else:
             capital_required = capital_at_retirement
         years_until_depletion = None
-        withdrawal_at_retirement = min(future_annual_income, capital_required * max_drawdown_rate)
+        return future_annual_income, future_monthly_income, capital_required, years_until_depletion, None
     else:
         capital_required = None
-        years_until_depletion, withdrawal_at_retirement = None, future_annual_income
-    return future_annual_income, future_monthly_income, capital_required, years_until_depletion, withdrawal_at_retirement
+        withdrawal_at_retirement = future_annual_income
+        years_until_depletion = calculate_years_until_depletion(
+            0, future_annual_income, inflation_rate, years_to_retirement, assumed_return
+        )[0]
+        return future_annual_income, future_monthly_income, capital_required, years_until_depletion, withdrawal_at_retirement
 
 def show():
     st.write("Enter client details to calculate the capital needed for retirement.")
@@ -108,10 +111,21 @@ def show():
     retirement_age = st.selectbox("Retirement Age", [55, 60, 65])
     inflation_rate = st.number_input("Inflation Rate (%)", min_value=0.0, max_value=20.0, value=6.0, step=0.5) / 100
     assumed_return = st.number_input("Assumed Annual Return After Retirement (%)", min_value=0.0, max_value=20.0, value=7.0, step=0.5) / 100
-    preserve_capital = st.checkbox("Preserve Capital at Retirement")
+
+    # Custom checkbox label with inline styling
+    col1, col2 = st.columns([0.05, 0.95])
+    with col1:
+        preserve_capital = st.checkbox("", key="preserve_capital")
+    with col2:
+        st.markdown(
+            '<p style="color: white; margin-top: 5px;">Preserve Capital at Retirement</p>',
+            unsafe_allow_html=True
+        )
+    
     preservation_years = 0
     if preserve_capital:
         preservation_years = st.selectbox("Preservation Period (Years)", [10, 15, 20, 25])
+    
     provision_types = [
         "Retirement Annuity", "Pension Fund", "Provident Fund", "Preservation Fund",
         "Business", "Endowment", "Savings Fund", "Shares", "Linked Investment",
@@ -150,7 +164,7 @@ def show():
         else:
             try:
                 years_to_retirement = retirement_age - current_age
-                future_annual_income, future_monthly_income, capital_required, years_until_depletion, withdrawal_at_retirement = calculate_retirement_plan(
+                future_annual_income, future_monthly_income, capital_required, years_until_depletion, _ = calculate_retirement_plan(
                     desired_monthly_income, inflation_rate, desired_annual_increase, years_to_retirement, preserve_capital, preservation_years, assumed_return
                 )
                 total_provision_value = 0
@@ -198,7 +212,30 @@ def show():
                 st.write(f"**Future Monthly Income Needed (Inflation Adjusted)**: R {future_monthly_income:,.2f}")
                 st.write("**Provisions at Retirement**:")
                 provisions_df = pd.DataFrame(provisions_data)
-                st.write(provisions_df)
+                # Style the provisions table for better visibility
+                st.markdown(
+                    """
+                    <style>
+                    .dataframe {
+                        background-color: #555555;
+                        color: white;
+                        border: 1px solid #777777;
+                    }
+                    .dataframe th {
+                        background-color: #666666;
+                        color: white;
+                        border: 1px solid #777777;
+                    }
+                    .dataframe td {
+                        background-color: #555555;
+                        color: white;
+                        border: 1px solid #777777;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.dataframe(provisions_df, use_container_width=True)
                 st.write(f"**Total Future Value of Provisions**: R {total_provision_value:,.2f}")
                 summary_data["Total Future Value of Provisions (R)"] = [total_provision_value]
                 if preserve_capital:
@@ -207,10 +244,113 @@ def show():
                     summary_data["Capital Required at Retirement (R)"] = [capital_required]
                     summary_data["Preserve Capital"] = ["Yes"]
                     summary_data["Preservation Period (Years)"] = [preservation_years]
-                    st.write(f"**Initial Withdrawal at Retirement (Annual)**: R {withdrawal_at_retirement:,.2f}")
-                    st.write(f"**Initial Withdrawal at Retirement (Monthly)**: R {(withdrawal_at_retirement / 12):,.2f}")
-                    summary_data["Initial Withdrawal at Retirement (Annual) (R)"] = [withdrawal_at_retirement]
-                    summary_data["Initial Withdrawal at Retirement (Monthly) (R)"] = [withdrawal_at_retirement / 12]
+
+                    # Calculate withdrawal based on legislative minimum and maximum
+                    max_drawdown_rate = 0.175  # Legislative maximum
+                    min_drawdown_rate = 0.025  # Legislative minimum
+                    max_sustainable_withdrawal = total_provision_value * assumed_return
+
+                    # Calculate the future annual income needed to achieve exactly the desired monthly income in today's terms
+                    inflation_factor = (1 + inflation_rate) ** years_to_retirement
+                    target_future_monthly = desired_monthly_income * inflation_factor
+                    target_future_annual = target_future_monthly * 12
+
+                    # Calculate the drawdown rate needed to achieve the target future annual income
+                    target_drawdown_rate = (target_future_annual / total_provision_value) if total_provision_value > 0 else 0
+
+                    # Calculate withdrawal at the legislative minimum
+                    min_withdrawal = total_provision_value * min_drawdown_rate
+                    min_future_monthly = min_withdrawal / 12
+                    min_current_monthly = min_future_monthly / inflation_factor
+
+                    if total_provision_value >= capital_required:
+                        # Provisions are sufficient or in excess
+                        if min_current_monthly >= desired_monthly_income:
+                            # If the legislative minimum drawdown provides at least the desired income in today's terms
+                            actual_withdrawal = min_withdrawal
+                            drawdown_rate = min_drawdown_rate * 100
+                        else:
+                            # Use the drawdown rate needed to achieve the target income, capped by assumed return and legislative max
+                            drawdown_rate = min(target_drawdown_rate, assumed_return, max_drawdown_rate)
+                            actual_withdrawal = total_provision_value * drawdown_rate
+                            drawdown_rate *= 100  # Convert to percentage
+                    else:
+                        # Provisions are insufficient, cap withdrawal to preserve capital
+                        actual_withdrawal = min(target_future_annual, max_sustainable_withdrawal)
+                        actual_withdrawal = min(actual_withdrawal, total_provision_value * max_drawdown_rate)
+                        drawdown_rate = (actual_withdrawal / total_provision_value * 100) if total_provision_value > 0 else 0
+
+                    # Calculate shortfall/excess
+                    future_monthly_actual = actual_withdrawal / 12
+                    current_monthly_actual = future_monthly_actual / inflation_factor
+                    if current_monthly_actual < desired_monthly_income:
+                        shortfall_percentage = ((desired_monthly_income - current_monthly_actual) / desired_monthly_income) * 100
+                    else:
+                        shortfall_percentage = 0
+                        capital_growth_rate = assumed_return * 100 - drawdown_rate
+
+                    # Display results
+                    st.write(f"**Initial Withdrawal at Retirement (Annual)**: R {actual_withdrawal:,.2f}")
+                    st.write(f"**Initial Withdrawal at Retirement (Monthly, Future Value)**: R {future_monthly_actual:,.2f}")
+                    st.write(f"**Initial Withdrawal at Retirement (Monthly, Today's Value)**: R {current_monthly_actual:,.2f}")
+                    summary_data["Initial Withdrawal at Retirement (Annual) (R)"] = [actual_withdrawal]
+                    summary_data["Initial Withdrawal at Retirement (Monthly, Future Value) (R)"] = [future_monthly_actual]
+                    summary_data["Initial Withdrawal at Retirement (Monthly, Today's Value) (R)"] = [current_monthly_actual]
+
+                    # Progress bar for drawdown rate
+                    color = "#2ca02c" if drawdown_rate <= 5 else "#ff7f0e" if drawdown_rate <= 10 else "#d62728"
+                    fig_progress = go.Figure(go.Bar(
+                        x=[drawdown_rate],
+                        y=["Drawdown Rate"],
+                        orientation='h',
+                        marker_color=color,
+                        text=[f"{drawdown_rate:.2f}%"],
+                        textposition='auto',
+                    ))
+                    fig_progress.add_vline(x=17.5, line_dash="dash", line_color="red", annotation_text="Max Legislative Rate (17.5%)", annotation_position="top")
+                    fig_progress.add_vline(x=2.5, line_dash="dash", line_color="green", annotation_text="Min Legislative Rate (2.5%)", annotation_position="bottom")
+                    fig_progress.update_layout(
+                        title="Initial Drawdown Rate (%)",
+                        xaxis_title="Drawdown Rate (%)",
+                        yaxis_title="",
+                        xaxis=dict(range=[0, 20], tickfont=dict(color="white")),
+                        yaxis=dict(tickfont=dict(color="white")),
+                        showlegend=False,
+                        paper_bgcolor="#4A4A4A",
+                        plot_bgcolor="#4A4A4A",
+                        font={'color': "white"},
+                        height=200
+                    )
+                    st.plotly_chart(fig_progress)
+
+                    # Display shortfall or excess
+                    if shortfall_percentage > 0:
+                        st.warning(f"**Income Shortfall**: {shortfall_percentage:.2f}%")
+                        summary_data["Income Shortfall (%)"] = [shortfall_percentage]
+                    else:
+                        st.write(f"**Capital Growth Rate**: {capital_growth_rate:.2f}% per year")
+                        summary_data["Capital Growth Rate (%)"] = [capital_growth_rate]
+
+                    # Bar chart for Capital Required vs Total Provisions
+                    fig_bar = go.Figure(data=[
+                        go.Bar(name="Total Provisions", x=["Capital"], y=[total_provision_value], marker_color="#1f77b4"),
+                        go.Bar(name="Capital Required", x=["Capital"], y=[capital_required], marker_color="#ff7f0e")
+                    ])
+                    fig_bar.update_layout(
+                        title="Capital Required vs Total Provisions",
+                        xaxis_title="",
+                        yaxis_title="Amount (R)",
+                        barmode="group",
+                        showlegend=True,
+                        paper_bgcolor="#4A4A4A",
+                        plot_bgcolor="#4A4A4A",
+                        font={'color': "white"},
+                        yaxis={'tickfont': {'color': "white"}},
+                        xaxis={'tickfont': {'color': "white"}}
+                    )
+                    st.plotly_chart(fig_bar)
+
+                    summary_data["Years Until Capital Depletion"] = ["N/A"]
                 else:
                     years_until_depletion, first_withdrawal, capital_over_time, withdrawals_over_time, monthly_income_over_time, monthly_income_today_value = calculate_years_until_depletion(
                         total_provision_value, future_annual_income, inflation_rate, years_to_retirement, assumed_return
@@ -254,7 +394,12 @@ def show():
                         xaxis_title="Age",
                         yaxis_title="Amount (R)",
                         hovermode="x unified",
-                        showlegend=True
+                        showlegend=True,
+                        paper_bgcolor="#4A4A4A",
+                        plot_bgcolor="#4A4A4A",
+                        font={'color': "white"},
+                        yaxis={'tickfont': {'color': "white"}},
+                        xaxis={'tickfont': {'color': "white"}}
                     )
                     st.plotly_chart(fig1)
 
@@ -279,7 +424,12 @@ def show():
                         xaxis_title="Age",
                         yaxis_title="Monthly Income (R)",
                         hovermode="x unified",
-                        showlegend=True
+                        showlegend=True,
+                        paper_bgcolor="#4A4A4A",
+                        plot_bgcolor="#4A4A4A",
+                        font={'color': "white"},
+                        yaxis={'tickfont': {'color': "white"}},
+                        xaxis={'tickfont': {'color': "white"}}
                     )
                     st.plotly_chart(fig2)
 
